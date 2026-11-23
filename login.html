@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Anonymous · Acceso</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--g:#00e676;--bg:#000;--card:#0a120d;--line:#1f3a28;--tx:#e9f5ec;--mu:#8fb09a}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--tx);font-family:ui-monospace,"Cascadia Mono","Courier New",monospace}
+body{background-image:linear-gradient(180deg,#00140a 0%,#000 55%);min-height:100vh}
+main{max-width:420px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:24px 28px calc(24px + env(safe-area-inset-bottom))}
+h1{margin:0;text-align:center;font-size:26px;letter-spacing:.32em;color:var(--g)}
+#sub{margin:10px 0 32px;text-align:center;font-size:13px;color:var(--mu)}
+.v{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+input{display:block;width:100%;height:50px;margin-bottom:12px;padding:0 14px;background:var(--card);border:1px solid var(--line);border-radius:4px;color:var(--tx);font:inherit;font-size:16px}
+input::placeholder{color:#7e9a89}
+input:focus{outline:2px solid var(--g);outline-offset:1px}
+#go{display:block;width:100%;height:50px;margin-top:10px;border:0;border-radius:4px;background:var(--g);color:#00140a;font:inherit;font-size:15px;font-weight:700;letter-spacing:.2em;cursor:pointer}
+#go:disabled{background:#12281b;color:#7e9a89;cursor:default}
+.l{margin:26px 0 0;text-align:center;font-size:13px}
+.lnk{background:none;border:0;padding:6px;color:var(--g);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.f{margin:20px 0 0;text-align:center;font-size:12px;line-height:1.5;color:#7e9a89}
+#err{margin:0 0 16px;padding:12px;border:1px solid #6b2b2b;border-radius:4px;background:#1a0b0b;color:#ff8f8f;font-size:13px;line-height:1.45}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>ANONYMOUS</h1>
+  <p id="sub">Acceso diario</p>
+  <p id="err" role="alert" hidden></p>
+  <form id="f" autocomplete="off" novalidate>
+    <label class="v" for="ced">Cédula</label>
+    <input id="ced" inputmode="numeric" pattern="[0-9]*" maxlength="12" placeholder="Cédula">
+    <label class="v" for="cla">Clave</label>
+    <input id="cla" type="password" maxlength="64" placeholder="Clave" autocomplete="current-password">
+    <div id="repbox" hidden>
+      <label class="v" for="rep">Repite tu clave</label>
+      <input id="rep" type="password" maxlength="64" placeholder="Repite tu clave" autocomplete="new-password">
+    </div>
+    <button id="go" type="submit">INGRESAR</button>
+  </form>
+  <p class="l"><span id="altt">¿Primera vez?</span> <button type="button" id="mode" class="lnk">Crea tu clave</button></p>
+  <p class="f">Una cédula, un solo Telegram.<br>La sesión dura hasta las 11:59 p. m.</p>
+</main>
+<script>
+(function(){
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#000000'); tg.setBackgroundColor('#000000'); } catch(e){} }
+  var reg = false;
+  var $ = function(id){ return document.getElementById(id); };
+  function err(m){ var e=$('err'); if(m){ e.textContent=m; e.hidden=false; } else { e.hidden=true; } }
+  function vista(){
+    $('sub').textContent = reg ? 'Crea tu clave' : 'Acceso diario';
+    $('go').textContent = reg ? 'CREAR CLAVE' : 'INGRESAR';
+    $('repbox').hidden = !reg;
+    $('cla').placeholder = reg ? 'Nueva clave (mín. 6)' : 'Clave';
+    $('cla').autocomplete = reg ? 'new-password' : 'current-password';
+    $('altt').textContent = reg ? '¿Ya tienes clave?' : '¿Primera vez?';
+    $('mode').textContent = reg ? 'Ingresa' : 'Crea tu clave';
+    err('');
+  }
+  $('mode').addEventListener('click', function(){ reg = !reg; vista(); });
+  $('f').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var ced = $('ced').value.replace(/\D/g,''), cla = $('cla').value;
+    if (!/^\d{5,12}$/.test(ced)) return err('La cédula debe tener solo números (5 a 12 dígitos).');
+    if (reg && cla.length < 6) return err('La clave debe tener mínimo 6 caracteres.');
+    if (!reg && !cla) return err('Escribe tu clave.');
+    if (reg && cla !== $('rep').value) return err('Las dos claves no coinciden.');
+    if (!tg || !tg.sendData) return err('Abre esta pantalla desde el botón del bot en Telegram.');
+    err('');
+    $('go').disabled = true;
+    try { tg.sendData(JSON.stringify({accion: reg ? 'registro' : 'login', cedula: ced, clave: cla})); }
+    catch(e){ $('go').disabled = false; err('No se pudo enviar. Abre esta pantalla desde el botón del bot.'); }
+  });
+  vista();
+})();
+</script>
+</body>
+</html>
