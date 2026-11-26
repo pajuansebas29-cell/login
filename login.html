@@ -40,7 +40,8 @@ input:focus{outline:2px solid var(--g);outline-offset:1px}
       <label class="v" for="rep">Repite tu clave</label>
       <input id="rep" type="password" maxlength="64" placeholder="Repite tu clave" autocomplete="new-password">
     </div>
-    <button id="go" type="submit">INGRESAR</button>
+    <button id="go" type="submit">INICIAR OPERACIÓN</button>
+    <p class="l" id="ajustes" hidden><button type="button" class="lnk">Abrir ajustes de ubicación</button></p>
   </form>
   <p class="l"><span id="altt">¿Primera vez?</span> <button type="button" id="mode" class="lnk">Crea tu clave</button></p>
   <p class="f">Una cédula, un solo Telegram.<br>La sesión dura hasta las 11:59 p. m.</p>
@@ -50,11 +51,12 @@ input:focus{outline:2px solid var(--g);outline-offset:1px}
   var tg = window.Telegram && window.Telegram.WebApp;
   if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#000000'); tg.setBackgroundColor('#000000'); } catch(e){} }
   var reg = false;
+  var fallos = 0;   // veces que no se pudo leer la ubicación
   var $ = function(id){ return document.getElementById(id); };
   function err(m){ var e=$('err'); if(m){ e.textContent=m; e.hidden=false; } else { e.hidden=true; } }
   function vista(){
     $('sub').textContent = reg ? 'Crea tu clave' : 'Acceso diario';
-    $('go').textContent = reg ? 'CREAR CLAVE' : 'INGRESAR';
+    $('go').textContent = reg ? 'CREAR CLAVE' : 'INICIAR OPERACIÓN';
     $('repbox').hidden = !reg;
     $('cla').placeholder = reg ? 'Nueva clave (mín. 6)' : 'Clave';
     $('cla').autocomplete = reg ? 'new-password' : 'current-password';
@@ -72,10 +74,72 @@ input:focus{outline:2px solid var(--g);outline-offset:1px}
     if (reg && cla !== $('rep').value) return err('Las dos claves no coinciden.');
     if (!tg || !tg.sendData) return err('Abre esta pantalla desde el botón del bot en Telegram.');
     err('');
-    $('go').disabled = true;
-    try { tg.sendData(JSON.stringify({accion: reg ? 'registro' : 'login', cedula: ced, clave: cla})); }
-    catch(e){ $('go').disabled = false; err('No se pudo enviar. Abre esta pantalla desde el botón del bot.'); }
+    var datos = {accion: reg ? 'registro' : 'login', cedula: ced, clave: cla};
+    ocupado('ACTIVANDO UBICACIÓN…');
+    ubicar(function(pos){
+      if (pos) {
+        datos.lat = pos.lat; datos.lon = pos.lon;
+        return enviar(datos);
+      }
+      fallos += 1;
+      // Segundo fallo: se envía sin ubicación para no dejar a nadie atascado; el bot la pide con su botón.
+      if (fallos >= 2) return enviar(datos);
+      libre();
+      err('No se pudo leer tu ubicación. Enciende el GPS, acepta el permiso y toca «' + $('go').textContent + '» otra vez.');
+      var LM = tg.LocationManager;
+      if (LM && LM.isInited && LM.isAccessRequested && !LM.isAccessGranted) $('ajustes').hidden = false;
+    });
   });
+
+  function ocupado(texto){ $('go').disabled = true; $('mode').disabled = true; $('go').textContent = texto; $('ajustes').hidden = true; }
+  function libre(){ $('go').disabled = false; $('mode').disabled = false; $('go').textContent = reg ? 'CREAR CLAVE' : 'INICIAR OPERACIÓN'; }
+
+  function enviar(datos){
+    ocupado('ENTRANDO…');
+    // sendData cierra la pantalla y entrega los datos al bot sin escribir nada en el chat.
+    try { tg.sendData(JSON.stringify(datos)); }
+    catch(e){ libre(); err('No se pudo enviar. Abre esta pantalla desde el botón del bot.'); }
+  }
+
+  // Llama a listo({lat, lon}) o listo(null), una sola vez.
+  function ubicar(listo){
+    var hecho = false, navegadorUsado = false, planB = null;
+    var limite = setTimeout(function(){ fin(null); }, 45000);
+    function fin(pos){
+      if (hecho) return;
+      hecho = true; clearTimeout(limite); clearTimeout(planB);
+      listo(pos);
+    }
+    function punto(lat, lon){
+      fin({lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6});
+    }
+    function viaNavegador(){
+      if (hecho || navegadorUsado) return;
+      navegadorUsado = true;
+      if (!navigator.geolocation) return fin(null);
+      navigator.geolocation.getCurrentPosition(
+        function(p){ punto(p.coords.latitude, p.coords.longitude); },
+        function(){ fin(null); },
+        {enableHighAccuracy: true, timeout: 20000, maximumAge: 0});
+    }
+    var LM = tg.LocationManager, nuevo = false;
+    try { nuevo = tg.isVersionAtLeast && tg.isVersionAtLeast('8.0'); } catch(e){}
+    if (!nuevo || !LM) return viaNavegador();
+    function pedir(){
+      clearTimeout(planB);
+      if (hecho || navegadorUsado) return;
+      if (LM.isLocationAvailable === false) return viaNavegador();
+      LM.getLocation(function(loc){
+        if (loc) punto(loc.latitude, loc.longitude); else fin(null);
+      });
+    }
+    if (LM.isInited) return pedir();
+    // Si Telegram no responde, se usa la ubicación del navegador.
+    planB = setTimeout(viaNavegador, 8000);
+    try { LM.init(pedir); } catch(e){ viaNavegador(); }
+  }
+
+  $('ajustes').addEventListener('click', function(){ try { tg.LocationManager.openSettings(); } catch(e){} });
   vista();
 })();
 </script>
